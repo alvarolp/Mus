@@ -1,0 +1,12 @@
+{
+  "name": "Mus",
+  "short_name": "Mus",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#efb468",
+  "theme_color": "#0b5d3b",
+  "icons": [
+    { "src": "icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

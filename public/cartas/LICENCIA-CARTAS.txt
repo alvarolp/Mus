@@ -1,0 +1,10 @@
+CARTAS DE LA BARAJA ESPAÑOLA (carpeta public/cartas)
+
+Baraja española libre ("Naipes Libres"), versión en SVG publicada en
+https://github.com/gjenkins20/spanish-playing-cards-svg
+Licencia: Creative Commons Reconocimiento-CompartirIgual 3.0 (CC BY-SA 3.0)
+https://creativecommons.org/licenses/by-sa/3.0/deed.es
+
+Las imágenes de esta carpeta son versiones reducidas (WebP) de esas cartas,
+con el fondo del naipe relleno y las esquinas redondeadas. Se comparten bajo
+la misma licencia (CC BY-SA 3.0).
