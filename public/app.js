@@ -10,6 +10,7 @@
   const LANCES = ['grande', 'chica', 'pares', 'juego'];
   const NOMBRE_LANCE = { grande: 'Grande', chica: 'Chica', pares: 'Pares', juego: 'Juego', punto: 'Punto' };
   const COLORES_AVATAR = ['#7fb8e6', '#f0a56a', '#8fd0b0', '#e6a0b4'];
+  const DURACION_BURBUJA = 2800; // ms que se queda cada bocadillo aunque cambie el lance
 
   // Para probar con varias pestañas en un mismo navegador: localhost:3000/?j=1, ?j=2...
   const sufijo = new URLSearchParams(location.search).get('j') || '';
@@ -212,16 +213,23 @@
     estado = nuevo;
 
     // Burbujas que se enseñan un momento: "Nos llevamos N" cuando rechazan un envite
-    const regAntes = antes && antes.registro ? antes.registro.length : 0;
-    const reg = nuevo.registro || [];
-    if (reg.length > regAntes) {
-      for (const ev of reg.slice(regAntes)) {
-        if (ev.tipo === 'llevan') {
-          transitorias.set(ev.asiento, { texto: `Nos llevamos ${ev.cantidad}`, hasta: Date.now() + 2800 });
-        }
+      // Cada acción nueva crea un bocadillo que dura un momento, aunque cambie el lance
+      const reg = nuevo.registro || [];
+      let regAntes = 0;
+      if (antes === null) {
+          regAntes = reg.length; // al reconectar no se repiten los bocadillos viejos
+      } else if (antes.registro && reg.length >= antes.registro.length) {
+          regAntes = antes.registro.length; // si el registro se ha vaciado (ronda nueva), se cuenta desde 0
       }
-      programarBurbujas();
-    }
+      if (reg.length > regAntes) {
+          for (const ev of reg.slice(regAntes)) {
+              const texto = textoEvento(ev);
+              if (texto) {
+                  transitorias.set(ev.asiento, { texto, hasta: Date.now() + DURACION_BURBUJA });
+              }
+          }
+          programarBurbujas();
+      }
 
     // Si ha cambiado la fase o el turno, se limpia lo marcado
     if (!antes || antes.fase !== nuevo.fase || antes.turno !== nuevo.turno) seleccion.clear();
@@ -446,15 +454,24 @@
     return porAsiento;
   }
 
-  function burbujasDeRecuento() {
-    const porAsiento = new Map();
-    (estado.recuento || []).slice(0, recuentoMostrados).forEach((it) => {
-      const lineas = porAsiento.get(it.asiento) || [];
-      lineas.unshift(`${it.piedras} de ${it.lance}`);
-      porAsiento.set(it.asiento, lineas);
-    });
-    return porAsiento;
-  }
+    function burbujasDeRecuento() {
+        const porAsiento = new Map();
+        (estado.recuento || []).slice(0, recuentoMostrados).forEach((it) => {
+            const lineas = porAsiento.get(it.asiento) || [];
+            lineas.unshift(`${it.piedras} de ${it.lance}`);
+            porAsiento.set(it.asiento, lineas);
+        });
+        // Antes de que empiece el recuento, se siguen viendo las últimas jugadas (ej. "¡Órdago!" y "Quiero")
+        if (recuentoMostrados === 0) {
+            const ahora = Date.now();
+            for (const [s, t] of transitorias) {
+                if (t.hasta > ahora && !porAsiento.has(s)) {
+                    porAsiento.set(s, [t.texto]);
+                }
+            }
+        }
+        return porAsiento;
+    }
 
   function puntosMostrados() {
     const e = estado;
@@ -637,9 +654,11 @@
       if (menu) extras.push(menu);
     }
 
-    return el('section', null,
-      el('div', { class: 'tapete' }), mazo, textoMus,
-      marcador, titulo, partes, misCartas, cuadroLances(e), extras);
+      const codigoSala = el('div', { class: 'codigo-sala' }, 'SALA ', el('b', null, e.codigo));
+
+      return el('section', null,
+          el('div', { class: 'tapete' }), mazo, textoMus,
+          marcador, titulo, partes, misCartas, cuadroLances(e), extras, codigoSala);
   }
 
   function ventanaFin() {

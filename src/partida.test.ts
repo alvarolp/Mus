@@ -80,24 +80,31 @@ describe('partida', () => {
     expect(p.ganador).toBeNull();
   });
 
-  it('con 2 juegos ganados se acaba la partida tras el último recuento', () => {
-    const p = new Partida();
-    fijarManos(p);
-    p.accion(0, { tipo: 'corte' });
-    p.accion(0, { tipo: 'ordago' });
-    p.accion(1, { tipo: 'quiero' }); // 1-0
-    p.siguiente();
+    it('con 3 juegos ganados se acaba la partida tras el último recuento', () => {
+        const p = new Partida();
+        fijarManos(p);
+        p.accion(0, { tipo: 'corte' });
+        p.accion(0, { tipo: 'ordago' });
+        p.accion(1, { tipo: 'quiero' }); // 1-0
+        p.siguiente();
 
-    fijarManos(p); // ahora es mano el asiento 1
-    p.accion(1, { tipo: 'corte' });
-    p.accion(1, { tipo: 'ordago' });
-    p.accion(2, { tipo: 'quiero' }); // gana la grande el asiento 0 -> 2-0
+        fijarManos(p); // mano: asiento 1
+        p.accion(1, { tipo: 'corte' });
+        p.accion(1, { tipo: 'ordago' });
+        p.accion(2, { tipo: 'quiero' }); // 2-0
+        expect(p.ganador).toBeNull();
+        p.siguiente();
 
-    expect(p.juegos).toEqual([2, 0]);
-    expect(p.ganador).toBe(0);
-    expect(p.estado).toBe('recuento'); // primero se cuenta la ronda
-    p.siguiente();
-    expect(p.estado).toBe('fin');
-    expect(() => p.accion(0, { tipo: 'mus' })).toThrow();
-  });
+        fijarManos(p); // mano: asiento 2
+        p.accion(2, { tipo: 'corte' });
+        p.accion(2, { tipo: 'ordago' });
+        p.accion(3, { tipo: 'quiero' }); // 3-0
+
+        expect(p.juegos).toEqual([3, 0]);
+        expect(p.ganador).toBe(0);
+        expect(p.estado).toBe('recuento');
+        p.siguiente();
+        expect(p.estado).toBe('fin');
+        expect(() => p.accion(0, { tipo: 'mus' })).toThrow();
+    });
 });

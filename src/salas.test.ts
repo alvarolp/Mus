@@ -102,65 +102,74 @@ describe('elegir pareja', () => {
 });
 
 describe('jugar con IA', () => {
-  it('el anfitrión puede añadir y quitar IA, y empezar con 1 humano + 3 IA', () => {
-    const sala = nuevaSala();
-    sala.unirse('Ana');
-    expect(() => sala.anadirIA(1, 1)).toThrow('anfitrión');
-    sala.anadirIA(0, 1);
-    sala.anadirIA(0, 2);
-    sala.anadirIA(0, 3);
-    expect(sala.jugadores[1]!.ia).toBe(true);
-    expect(sala.jugadores[1]!.nombre).toContain('(IA)');
-    expect(() => sala.anadirIA(0, 1)).toThrow('ocupado');
-    sala.quitarIA(0, 3);
-    expect(sala.jugadores[3]).toBeNull();
-    sala.anadirIA(0, 3);
-    sala.empezar(0);
-    expect(sala.vista(0).estado).toBe('jugando');
-  });
+    it('el anfitrión puede añadir y quitar IA, y empezar con 1 humano + 3 IA', () => {
+        const sala = nuevaSala();
+        sala.unirse('Ana');
+        expect(() => sala.anadirIA(1, 1)).toThrow('anfitrión');
+        sala.anadirIA(0, 1);
+        sala.anadirIA(0, 2);
+        sala.anadirIA(0, 3);
+        expect(sala.jugadores[1]!.ia).toBe(true);
+        expect(sala.jugadores[1]!.nombre).toContain('(IA)');
+        expect(() => sala.anadirIA(0, 1)).toThrow('ocupado');
+        sala.quitarIA(0, 3);
+        expect(sala.jugadores[3]).toBeNull();
+        sala.anadirIA(0, 3);
+        sala.empezar(0);
+        expect(sala.vista(0).estado).toBe('jugando');
+    });
 
-  it('las IA y las declaraciones se juegan solas con avanzarAuto', () => {
-    const sala = nuevaSala();
-    sala.unirse('Ana');
-    [1, 2, 3].forEach((s) => sala.anadirIA(0, s));
-    sala.empezar(0);
-    // Ana es mano (asiento 0): dice mus y luego juegan las IA
-    sala.accion(0, { tipo: 'mus' });
-    expect(sala.vista(0).turno).toBe(1);
-    expect(sala.avanzarAuto()).toBe(true);
-    expect(sala.vista(0).registro!.length).toBeGreaterThanOrEqual(2);
-    // Cuando le toca a Ana, no se hace nada automático
-    for (let i = 0; i < 40 && sala.vista(0).turno !== 0; i++) sala.avanzarAuto();
-    expect(sala.vista(0).turno).toBe(0);
-    expect(sala.avanzarAuto()).toBe(false);
-  });
-
-  it('cuatro IA con un humano que siempre pasa terminan partidas enteras sin atascarse', () => {
-    for (let partida = 0; partida < 3; partida++) {
-      const sala = nuevaSala();
-      sala.unirse('Ana');
-      [1, 2, 3].forEach((s) => sala.anadirIA(0, s));
-      sala.empezar(0);
-      let pasos = 0;
-      while (sala.vista(0).estado !== 'fin' && pasos < 5000) {
-        pasos++;
-        const v = sala.vista(0);
-        if (sala.avanzarAuto()) continue;
-        if (v.estado === 'recuento') {
-          sala.continuar(0);
-          continue;
+    it('las IA y las declaraciones se juegan solas con avanzarAuto', () => {
+        const sala = nuevaSala();
+        sala.unirse('Ana');
+        [1, 2, 3].forEach((s) => sala.anadirIA(0, s));
+        sala.empezar(0);
+        // Ana es mano (asiento 0): dice mus y luego juegan las IA
+        sala.accion(0, { tipo: 'mus' });
+        expect(sala.vista(0).turno).toBe(1);
+        expect(sala.avanzarAuto()).toBe(true);
+        expect(sala.vista(0).registro!.length).toBeGreaterThanOrEqual(2);
+        // Cuando le toca a Ana, no se hace nada automático
+        for (let i = 0; i < 40 && sala.vista(0).turno !== 0; i++) {
+            sala.avanzarAuto();
         }
-        // Turno del humano: juega lo más simple que sea válido
-        if (v.fase === 'mus') sala.accion(0, { tipo: Math.random() < 0.5 ? 'mus' : 'corte' });
-        else if (v.fase === 'descarte') sala.accion(0, { tipo: 'descartar', indices: [0, 1] });
-        else if (v.envite) sala.accion(0, { tipo: Math.random() < 0.5 ? 'quiero' : 'noquiero' });
-        else sala.accion(0, { tipo: 'paso' });
-      }
-      expect(sala.vista(0).estado).toBe('fin');
-      const v = sala.vista(0);
-      expect(Math.max(v.juegos![0], v.juegos![1])).toBe(2);
-    }
-  });
+        expect(sala.vista(0).turno).toBe(0);
+        expect(sala.avanzarAuto()).toBe(false);
+    });
+
+    it('cuatro IA con un humano que siempre pasa terminan partidas enteras sin atascarse', () => {
+        for (let partida = 0; partida < 3; partida++) {
+            const sala = nuevaSala();
+            sala.unirse('Ana');
+            [1, 2, 3].forEach((s) => sala.anadirIA(0, s));
+            sala.empezar(0);
+            let pasos = 0;
+            while (sala.vista(0).estado !== 'fin' && pasos < 20000) {
+                pasos++;
+                const v = sala.vista(0);
+                if (sala.avanzarAuto()) {
+                    continue;
+                }
+                if (v.estado === 'recuento') {
+                    sala.continuar(0);
+                    continue;
+                }
+                // Turno del humano: juega lo más simple que sea válido
+                if (v.fase === 'mus') {
+                    sala.accion(0, { tipo: Math.random() < 0.5 ? 'mus' : 'corte' });
+                } else if (v.fase === 'descarte') {
+                    sala.accion(0, { tipo: 'descartar', indices: [0, 1] });
+                } else if (v.envite) {
+                    sala.accion(0, { tipo: Math.random() < 0.5 ? 'quiero' : 'noquiero' });
+                } else {
+                    sala.accion(0, { tipo: 'paso' });
+                }
+            }
+            expect(sala.vista(0).estado).toBe('fin');
+            const v = sala.vista(0);
+            expect(Math.max(v.juegos![0], v.juegos![1])).toBe(3);
+        }
+    });
 });
 
 describe('lo que ve cada jugador', () => {

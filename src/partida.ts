@@ -1,7 +1,7 @@
 import { Ronda, type Accion, type Equipo } from './ronda';
 
-// Partida fija: se juegan hasta 3 juegos de 40 piedras; gana quien consiga 2 juegos
-export const JUEGOS_PARA_GANAR = 2;
+// Partida fija: se juegan hasta 5 juegos de 40 piedras; gana quien consiga 3 juegos
+export const JUEGOS_PARA_GANAR = 3;
 
 // jugando: se está jugando una ronda
 // recuento: la ronda ha terminado; se enseñan las cartas y se cuentan las piedras
