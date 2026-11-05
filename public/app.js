@@ -10,7 +10,9 @@
   const LANCES = ['grande', 'chica', 'pares', 'juego'];
   const NOMBRE_LANCE = { grande: 'Grande', chica: 'Chica', pares: 'Pares', juego: 'Juego', punto: 'Punto' };
   const COLORES_AVATAR = ['#7fb8e6', '#f0a56a', '#8fd0b0', '#e6a0b4'];
-  const DURACION_BURBUJA = 2800; // ms que se queda cada bocadillo aunque cambie el lance
+    const DURACION_BURBUJA = 2800; // ms que se queda cada bocadillo aunque cambie el lance
+    const DURACION_DECLARACION = 1000; // "Tengo" / "No tengo" se ven de uno en uno
+    const PAUSA_LANCE = 800;           // pausa antes de enseñar el menú del lance siguiente
 
   // Para probar con varias pestañas en un mismo navegador: localhost:3000/?j=1, ?j=2...
   const sufijo = new URLSearchParams(location.search).get('j') || '';
@@ -35,6 +37,8 @@
   let temporizadorError = 0;
   let temporizadorRecuento = 0;
   let temporizadorBurbujas = 0;
+  let pausaMenuHasta = 0;                // hasta cuándo no se enseña el menú (pausa entre lances)
+  let temporizadorPausa = 0;
 
   // ---------- Almacenamiento (puede fallar en modo privado) ----------
   function leer(clave) {
@@ -225,10 +229,22 @@
           for (const ev of reg.slice(regAntes)) {
               const texto = textoEvento(ev);
               if (texto) {
-                  transitorias.set(ev.asiento, { texto, hasta: Date.now() + DURACION_BURBUJA });
+                  const duracion = (ev.tipo === 'tengo' || ev.tipo === 'notengo') ? DURACION_DECLARACION : DURACION_BURBUJA;
+                  transitorias.set(ev.asiento, { texto, hasta: Date.now() + duracion });
               }
           }
           programarBurbujas();
+      }
+
+      // Pausa corta entre lances (y al acabar de declarar pares/juego) antes de enseñar el menú
+      if (antes !== null && nuevo.fase === 'lance') {
+          const cambioLance = antes.lance !== nuevo.lance;
+          const finDeclaracion = antes.declarando && !nuevo.declarando;
+          if (cambioLance || finDeclaracion) {
+              pausaMenuHasta = Date.now() + PAUSA_LANCE;
+              clearTimeout(temporizadorPausa);
+              temporizadorPausa = setTimeout(render, PAUSA_LANCE + 30);
+          }
       }
 
     // Si ha cambiado la fase o el turno, se limpia lo marcado
@@ -442,11 +458,15 @@
     if (e.fase === 'mus') desde = reg.map((x) => x.tipo).lastIndexOf('descartar') + 1;
     else if (e.fase === 'descarte') desde = reg.map((x) => x.tipo).lastIndexOf('mus') + 1;
 
-    reg.forEach((ev, i) => {
-      if (i < desde || ev.tipo === 'llevan') return;
-      if (e.fase === 'lance' && ev.lance !== e.lance) return;
-      porAsiento.set(ev.asiento, [textoEvento(ev)]);
-    });
+      reg.forEach((ev, i) => {
+          if (i < desde || ev.tipo === 'llevan' || ev.tipo === 'tengo' || ev.tipo === 'notengo') {
+              return;
+          }
+          if (e.fase === 'lance' && ev.lance !== e.lance) {
+              return;
+          }
+          porAsiento.set(ev.asiento, [textoEvento(ev)]);
+      });
     const ahora = Date.now();
     for (const [s, t] of transitorias) {
       if (t.hasta > ahora) porAsiento.set(s, [t.texto]);
@@ -515,7 +535,12 @@
 
   function menuDeDecision() {
     const e = estado;
-    if (e.estado !== 'jugando' || e.turno !== e.asiento) return null;
+      if (e.estado !== 'jugando' || e.turno !== e.asiento) {
+          return null;
+      }
+      if (Date.now() < pausaMenuHasta) {
+          return null; // pausa corta entre lances
+      }
 
     if (e.fase === 'mus') {
       return el('div', { class: 'menu' },

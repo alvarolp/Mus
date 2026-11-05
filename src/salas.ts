@@ -105,7 +105,7 @@ export class Sala {
   constructor(codigo: string, opciones: OpcionesSala = {}) {
     this.codigo = codigo;
     this.auto = opciones.auto ?? true;
-    this.retardos = opciones.retardos ?? { declarar: 750, ia: 1300, recuento: 400 };
+    this.retardos = opciones.retardos ?? { declarar: 1100, ia: 1300, recuento: 400 };
   }
 
   // ---------- Sala de espera ----------
@@ -128,20 +128,43 @@ export class Sala {
     if (this.partida) throw new Error('La partida ya ha empezado');
   }
 
-  unirse(nombre: unknown): { asiento: number; token: string } {
-    this.exigirEspera();
-    const asiento = this.jugadores.findIndex((j) => j === null);
-    if (asiento === -1) throw new Error('La sala está llena');
+    unirse(nombre: unknown): { asiento: number; token: string } {
+        // Partida ya empezada: solo se puede volver a coger el sitio de un humano desconectado
+        if (this.partida) {
+            const libre = this.jugadores.findIndex((j) => j !== null && !j.ia && !j.conectado);
+            if (libre === -1) {
+                throw new Error('La partida ya ha empezado');
+            }
+            const jugador = this.jugadores[libre]!;
+            const tokenNuevo = randomUUID();
+            if (this.anfitrionToken === jugador.token) {
+                this.anfitrionToken = tokenNuevo;
+            }
+            jugador.token = tokenNuevo;
+            jugador.conectado = true;
+            this.ultimaActividad = Date.now();
+            this.programar();
+            return { asiento: libre, token: tokenNuevo };
+        }
 
-    let limpio = typeof nombre === 'string' ? nombre.trim().slice(0, 16) : '';
-    if (limpio === '') limpio = `Jugador ${asiento + 1}`;
+        const asiento = this.jugadores.findIndex((j) => j === null);
+        if (asiento === -1) {
+            throw new Error('La sala está llena');
+        }
 
-    const token = randomUUID();
-    this.jugadores[asiento] = { nombre: limpio, token, conectado: true, ia: false };
-    if (this.anfitrionToken === null) this.anfitrionToken = token;
-    this.ultimaActividad = Date.now();
-    return { asiento, token };
-  }
+        let limpio = typeof nombre === 'string' ? nombre.trim().slice(0, 16) : '';
+        if (limpio === '') {
+            limpio = `Jugador ${asiento + 1}`;
+        }
+
+        const token = randomUUID();
+        this.jugadores[asiento] = { nombre: limpio, token, conectado: true, ia: false };
+        if (this.anfitrionToken === null) {
+            this.anfitrionToken = token;
+        }
+        this.ultimaActividad = Date.now();
+        return { asiento, token };
+    }
 
   // Cambiar de sitio. Cada uno puede moverse a un hueco (o al sitio de una IA);
   // el anfitrión puede además cambiar de sitio a cualquier jugador.
