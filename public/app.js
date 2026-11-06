@@ -13,9 +13,10 @@
 
     const DURACION_BURBUJA = 1800;       // ms que se ve un bocadillo normal
     const DURACION_PASO = 1100;          // "Paso" desaparece antes
-    const DURACION_DECLARACION = 600;    // "Tengo" / "No tengo"
-    const SEPARACION_DECLARACION = 700;  // tiempo mínimo entre una declaración y la siguiente
-    const PAUSA_LANCE = 400;             // pausa antes de enseñar el menú del lance siguiente
+    const SEPARACION_DECLARACION = 800;  // tiempo mínimo entre un "Tengo/No tengo" y el siguiente
+    const HOLD_DECLARACIONES = 1500;     // ms que se ven todas las declaraciones juntas al acabar
+    const PAUSA_LANCE = 1000;            // pausa antes de enseñar el menú del lance siguiente
+    const PERIODO_PARPADEO = 900;        // ms de cada parpadeo de la apuesta activa
 
     // Para probar con varias pestañas en un mismo navegador: localhost:3000/?j=1, ?j=2...
     const sufijo = new URLSearchParams(location.search).get('j') || '';
@@ -44,7 +45,7 @@
     let temporizadorPausa = 0;
     let idBurbuja = 0;
     let siguienteDeclaracion = 0;          // cuándo puede empezar a verse la próxima declaración
-    let finUltimaDeclaracion = 0;
+    let ultimaDeclaracionDesde = 0;        // cuándo empieza a verse la última declaración
     let clavesPrevias = new Set();         // para animar solo lo que aparece nuevo
     let clavesVistas = new Set();
 
@@ -254,7 +255,7 @@
         const antes = estado;
         estado = nuevo;
 
-        // Cada acción nueva crea un bocadillo que dura un momento
+        // Cada acción nueva crea un bocadillo
         const reg = nuevo.registro || [];
         let regAntes = 0;
         if (antes === null) {
@@ -271,27 +272,41 @@
                 }
                 let desde = ahora;
                 let duracion = DURACION_BURBUJA;
+                let declaracion = false;
                 if (ev.tipo === 'tengo' || ev.tipo === 'notengo') {
-                    // Las declaraciones se ponen en cola para que se vean de una en una
+                    // Salen de una en una y se quedan hasta que hablan los cuatro
                     desde = Math.max(ahora, siguienteDeclaracion);
                     siguienteDeclaracion = desde + SEPARACION_DECLARACION;
-                    duracion = DURACION_DECLARACION;
-                    finUltimaDeclaracion = desde + duracion;
+                    ultimaDeclaracionDesde = desde;
+                    declaracion = true;
+                    duracion = Infinity;
                 } else if (ev.tipo === 'paso') {
                     duracion = DURACION_PASO;
                 }
                 idBurbuja++;
-                transitorias.set(ev.asiento, { id: idBurbuja, texto, desde, hasta: desde + duracion });
+                transitorias.set(ev.asiento, {
+                    id: idBurbuja, texto, desde, hasta: desde + duracion, declaracion, lance: ev.lance,
+                });
             }
-            programarBurbujas();
         }
 
-        // Pausa corta entre lances (y al acabar de declarar pares/juego) antes de enseñar el menú
+        // Cuando acaba la ronda de declaraciones (o cambia el lance), se ven todas juntas un momento y desaparecen
+        let cierre = 0;
+        for (const t of transitorias.values()) {
+            const terminada = t.lance !== nuevo.lance || !nuevo.declarando || nuevo.fase !== 'lance';
+            if (t.declaracion && t.hasta === Infinity && terminada) {
+                t.hasta = Math.max(Date.now(), ultimaDeclaracionDesde) + HOLD_DECLARACIONES;
+                cierre = Math.max(cierre, t.hasta);
+            }
+        }
+        programarBurbujas();
+
+        // Pausa entre lances antes de enseñar el menú
         if (antes !== null && nuevo.fase === 'lance') {
             const cambioLance = antes.lance !== nuevo.lance;
             const finDeclaracion = antes.declarando && !nuevo.declarando;
             if (cambioLance || finDeclaracion) {
-                pausaMenuHasta = Math.max(Date.now() + PAUSA_LANCE, finUltimaDeclaracion + 200);
+                pausaMenuHasta = Math.max(Date.now() + PAUSA_LANCE, cierre > 0 ? cierre + 100 : 0);
                 clearTimeout(temporizadorPausa);
                 temporizadorPausa = setTimeout(render, pausaMenuHasta - Date.now() + 30);
             }

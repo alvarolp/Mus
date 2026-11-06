@@ -99,6 +99,7 @@ export class Sala {
   private registro: Evento[] = [];
   private recuentoDesde = 0;
   private temporizador: ReturnType<typeof setTimeout> | null = null;
+  private pausaHasta = 0; // hasta cuándo esperan las jugadas automáticas (pausa entre lances)
   private auto: boolean;
   private retardos: { declarar: number; ia: number; recuento: number };
 
@@ -278,8 +279,15 @@ export class Sala {
     const lance = ronda.lance;
     const pagosAntes = ronda.pagos.length;
     const habiaEnvite = ronda.envite !== null;
+    const declarandoAntes = ronda.declarando;
 
-    p.accion(asiento, accion); // lanza un error si la jugada no es válida
+      p.accion(asiento, accion); // lanza un error si la jugada no es válida
+      // Pausa real entre lances: tras cambiar de lance 1 s, y tras acabar de declarar 1,7 s
+      const cambioLance = ronda.lance !== lance;
+      const finDeclaracion = declarandoAntes && !ronda.declarando;
+      if (cambioLance || finDeclaracion) {
+          this.pausaHasta = Date.now() + (finDeclaracion ? 1700 : 1000);
+      }
 
     const evento: Evento = { asiento, tipo: accion.tipo, lance };
     if (accion.tipo === 'envido') {
@@ -377,7 +385,11 @@ export class Sala {
     if (k === 'declarar') espera = this.retardos.declarar;
     else if (k === 'ia') espera = this.retardos.ia + Math.random() * 250;
     else if (this.todosConfirmados()) espera = this.retardos.recuento;
-    else espera = Math.max(50, this.recuentoDesde + ESPERA_RECUENTO - Date.now());
+      else espera = Math.max(50, this.recuentoDesde + ESPERA_RECUENTO - Date.now());
+
+      if (k === 'declarar' || k === 'ia') {
+          espera = Math.max(espera, this.pausaHasta - Date.now());
+      }
 
     this.temporizador = setTimeout(() => {
       this.temporizador = null;

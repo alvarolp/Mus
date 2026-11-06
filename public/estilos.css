@@ -346,3 +346,18 @@ input { -webkit-user-select: text; user-select: text; }
 .bm, .btn {
     transition: background .1s, transform .1s;
 }
+
+/* La apuesta activa parpadea mientras está pendiente */
+@keyframes parpadeo {
+    0%, 100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .15;
+    }
+}
+
+.cant.parpadea {
+    animation: parpadeo .9s ease-in-out infinite;
+}
