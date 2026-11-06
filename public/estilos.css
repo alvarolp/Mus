@@ -309,3 +309,40 @@ input { -webkit-user-select: text; user-select: text; }
         letter-spacing: 3px;
         color: #1b1b1b;
     }
+
+/* Animaciones: solo se aplican a lo que aparece nuevo */
+@keyframes aparece-burbuja {
+    from {
+        opacity: 0;
+        transform: scale(.7) translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes aparece-menu {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.burbuja.nueva {
+    animation: aparece-burbuja .18s ease-out;
+}
+
+.menu.nuevo, .cartel.nuevo {
+    animation: aparece-menu .18s ease-out;
+}
+
+.bm, .btn {
+    transition: background .1s, transform .1s;
+}

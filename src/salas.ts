@@ -105,7 +105,7 @@ export class Sala {
   constructor(codigo: string, opciones: OpcionesSala = {}) {
     this.codigo = codigo;
     this.auto = opciones.auto ?? true;
-    this.retardos = opciones.retardos ?? { declarar: 1100, ia: 1300, recuento: 400 };
+    this.retardos = opciones.retardos ?? { declarar: 700, ia: 900, recuento: 400 };
   }
 
   // ---------- Sala de espera ----------
@@ -375,7 +375,7 @@ export class Sala {
 
     let espera: number;
     if (k === 'declarar') espera = this.retardos.declarar;
-    else if (k === 'ia') espera = this.retardos.ia + Math.random() * 400;
+    else if (k === 'ia') espera = this.retardos.ia + Math.random() * 250;
     else if (this.todosConfirmados()) espera = this.retardos.recuento;
     else espera = Math.max(50, this.recuentoDesde + ESPERA_RECUENTO - Date.now());
 
