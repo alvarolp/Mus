@@ -45,7 +45,8 @@ export interface Vista {
   participantes?: number[];
   envite?: { apostador: Equipo; asiento: number; cantidad: number | 'ordago' } | null;
   apuesta?: { total: number | 'ordago'; alRechazar: number } | null;
-  aceptados?: Record<Lance, number>;
+    aceptados?: Record<Lance, number>;
+    rechazos?: { lance: Lance; equipo: Equipo; piedras: number }[]; // lances que acabaron con un "no quiero"
   misCartas?: Mano;
   registro?: Evento[];
   // Solo cuando la ronda ha terminado
@@ -99,14 +100,13 @@ export class Sala {
   private registro: Evento[] = [];
   private recuentoDesde = 0;
   private temporizador: ReturnType<typeof setTimeout> | null = null;
-  private pausaHasta = 0; // hasta cuándo esperan las jugadas automáticas (pausa entre lances)
   private auto: boolean;
   private retardos: { declarar: number; ia: number; recuento: number };
 
   constructor(codigo: string, opciones: OpcionesSala = {}) {
     this.codigo = codigo;
     this.auto = opciones.auto ?? true;
-    this.retardos = opciones.retardos ?? { declarar: 700, ia: 900, recuento: 400 };
+    this.retardos = opciones.retardos ?? { declarar: 750, ia: 1300, recuento: 400 };
   }
 
   // ---------- Sala de espera ----------
@@ -129,43 +129,20 @@ export class Sala {
     if (this.partida) throw new Error('La partida ya ha empezado');
   }
 
-    unirse(nombre: unknown): { asiento: number; token: string } {
-        // Partida ya empezada: solo se puede volver a coger el sitio de un humano desconectado
-        if (this.partida) {
-            const libre = this.jugadores.findIndex((j) => j !== null && !j.ia && !j.conectado);
-            if (libre === -1) {
-                throw new Error('La partida ya ha empezado');
-            }
-            const jugador = this.jugadores[libre]!;
-            const tokenNuevo = randomUUID();
-            if (this.anfitrionToken === jugador.token) {
-                this.anfitrionToken = tokenNuevo;
-            }
-            jugador.token = tokenNuevo;
-            jugador.conectado = true;
-            this.ultimaActividad = Date.now();
-            this.programar();
-            return { asiento: libre, token: tokenNuevo };
-        }
+  unirse(nombre: unknown): { asiento: number; token: string } {
+    this.exigirEspera();
+    const asiento = this.jugadores.findIndex((j) => j === null);
+    if (asiento === -1) throw new Error('La sala está llena');
 
-        const asiento = this.jugadores.findIndex((j) => j === null);
-        if (asiento === -1) {
-            throw new Error('La sala está llena');
-        }
+    let limpio = typeof nombre === 'string' ? nombre.trim().slice(0, 16) : '';
+    if (limpio === '') limpio = `Jugador ${asiento + 1}`;
 
-        let limpio = typeof nombre === 'string' ? nombre.trim().slice(0, 16) : '';
-        if (limpio === '') {
-            limpio = `Jugador ${asiento + 1}`;
-        }
-
-        const token = randomUUID();
-        this.jugadores[asiento] = { nombre: limpio, token, conectado: true, ia: false };
-        if (this.anfitrionToken === null) {
-            this.anfitrionToken = token;
-        }
-        this.ultimaActividad = Date.now();
-        return { asiento, token };
-    }
+    const token = randomUUID();
+    this.jugadores[asiento] = { nombre: limpio, token, conectado: true, ia: false };
+    if (this.anfitrionToken === null) this.anfitrionToken = token;
+    this.ultimaActividad = Date.now();
+    return { asiento, token };
+  }
 
   // Cambiar de sitio. Cada uno puede moverse a un hueco (o al sitio de una IA);
   // el anfitrión puede además cambiar de sitio a cualquier jugador.
@@ -279,15 +256,8 @@ export class Sala {
     const lance = ronda.lance;
     const pagosAntes = ronda.pagos.length;
     const habiaEnvite = ronda.envite !== null;
-    const declarandoAntes = ronda.declarando;
 
-      p.accion(asiento, accion); // lanza un error si la jugada no es válida
-      // Pausa real entre lances: tras cambiar de lance 1 s, y tras acabar de declarar 1,7 s
-      const cambioLance = ronda.lance !== lance;
-      const finDeclaracion = declarandoAntes && !ronda.declarando;
-      if (cambioLance || finDeclaracion) {
-          this.pausaHasta = Date.now() + (finDeclaracion ? 1700 : 1000);
-      }
+    p.accion(asiento, accion); // lanza un error si la jugada no es válida
 
     const evento: Evento = { asiento, tipo: accion.tipo, lance };
     if (accion.tipo === 'envido') {
@@ -383,13 +353,9 @@ export class Sala {
 
     let espera: number;
     if (k === 'declarar') espera = this.retardos.declarar;
-    else if (k === 'ia') espera = this.retardos.ia + Math.random() * 250;
+    else if (k === 'ia') espera = this.retardos.ia + Math.random() * 400;
     else if (this.todosConfirmados()) espera = this.retardos.recuento;
-      else espera = Math.max(50, this.recuentoDesde + ESPERA_RECUENTO - Date.now());
-
-      if (k === 'declarar' || k === 'ia') {
-          espera = Math.max(espera, this.pausaHasta - Date.now());
-      }
+    else espera = Math.max(50, this.recuentoDesde + ESPERA_RECUENTO - Date.now());
 
     this.temporizador = setTimeout(() => {
       this.temporizador = null;
@@ -440,7 +406,8 @@ export class Sala {
             alRechazar: Math.max(1, r.aceptadoParcial),
           }
         : null,
-      aceptados: { ...r.aceptado },
+        aceptados: { ...r.aceptado },
+        rechazos: r.pagos.map((x) => ({ lance: x.lance, equipo: x.equipo, piedras: x.piedras })),
       misCartas: r.manos[asiento].map((c) => ({ ...c })),
       registro: [...this.registro],
     };

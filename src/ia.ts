@@ -157,7 +157,8 @@ function probabilidadBase(ctx: ContextoIA): number {
 export const FAROL = {
   apuesta: 0.12, // con mano floja, apostar 2 de farol
   apuestaGrande: 0.02, // farol grande (4), muy raro
-  subida: 0.05, // subir de farol cuando le han hecho un envite
+    subida: 0.05, // subir de farol cuando le han hecho un envite
+    quererDudoso: 0.15, // querer un envite con una mano algo justa
   trampa: 0.1, // con muy buena mano, pasar para que el rival se anime
   desesperado: 0.1, // órdago de farol cuando va muy por detrás
   corte: 0.03, // cortar el mus con mano floja
@@ -196,11 +197,16 @@ export function decidirLanceConP(ctx: ContextoIA, p: number, azar: () => number)
   const alRechazar = Math.max(1, ctx.aceptado);
   if (p >= 0.985 && total >= 6 && dif < 25) return { tipo: 'ordago' };
   if (p >= 0.8 && total < 10) return { tipo: 'envido', cantidad: p >= 0.92 ? 4 : 2 };
-  const ventaja = (2 * p - 1) * total + alRechazar - 0.05 * total; // cuánto sale a cuenta aceptar
-  if (ventaja > 0) return { tipo: 'quiero' };
-  // No compensa aceptar: normalmente se rechaza, pero a veces se sube de farol
-  if (total < 6 && p >= 0.2 && azar() < FAROL.subida) return { tipo: 'envido', cantidad: 2 };
-  return { tipo: 'noquiero' };
+    // Quien envida suele llevar buena mano, así que la p de la simulación (que reparte las cartas
+    // al azar) es optimista. Cuanto más gordo es el envite, más mano hace falta para querer;
+    // si ya hay mucho aceptado en la mesa, rechazar sale más caro y se exige algo menos.
+    const necesaria = Math.min(0.8, 0.6 + 0.02 * Math.min(total, 10) - 0.015 * Math.min(alRechazar, 5));
+    if (p >= necesaria) return { tipo: 'quiero' };
+    // Con una mano dudosa, de vez en cuando se quiere "por ver"
+    if (p >= necesaria - 0.12 && azar() < FAROL.quererDudoso) return { tipo: 'quiero' };
+    // No compensa aceptar: normalmente se rechaza, pero a veces se sube de farol
+    if (total < 6 && p >= 0.2 && azar() < FAROL.subida) return { tipo: 'envido', cantidad: 2 };
+    return { tipo: 'noquiero' };
 }
 
 // ---------- Decisión ----------

@@ -368,9 +368,19 @@ export class Ronda {
       if (this.ganadorJuego !== null) break;
       const p = this.participantesDe(l);
       if (p.length === 0) continue; // nadie tiene pares
-      const asiento = this.ganadorDelLance(l, p);
-      const ganador = equipoDe(asiento);
-      let piedras = this.rechazado[l] ? 0 : this.aceptado[l];
+        // Si un envite se rechazó, el lance es de quien envidó aunque no tenga la mejor mano
+        const pago = this.pagos.find((x) => x.lance === l);
+        let asiento: number;
+        let ganador: Equipo;
+        if (pago) {
+            ganador = pago.equipo;
+            const suyos = p.filter((s) => equipoDe(s) === ganador);
+            asiento = suyos.length > 0 ? this.ganadorDelLance(l, suyos) : pago.asiento;
+        } else {
+            asiento = this.ganadorDelLance(l, p);
+            ganador = equipoDe(asiento);
+        }
+        let piedras = this.rechazado[l] ? 0 : this.aceptado[l];
       let nombre: ItemRecuento['lance'] = l;
 
       if (l === 'grande' || l === 'chica') {
