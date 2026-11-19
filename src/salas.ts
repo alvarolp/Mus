@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Partida, type EstadoPartida } from './partida';
-import type { Accion, Equipo, Fase, ItemRecuento, Lance, Ronda } from './ronda';
-import type { Mano } from './tipos';
+import type { Accion, Equipo, Fase, ItemRecuento, Lance, RespuestaMus, Ronda } from './ronda'; import type { Mano } from './tipos';
 import { decidirIA, type ContextoIA } from './ia';
 
 const LETRAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // sin la I ni la O, para no confundir
@@ -9,11 +8,18 @@ const MAX_SALAS = 200;
 const NOMBRES_IA = ['Antonio', 'Carmen', 'Pepe', 'Lola', 'Manolo', 'Rosa'];
 const ESPERA_RECUENTO = 60_000; // si alguien no pulsa "continuar", la partida sigue sola pasado este tiempo
 
+// Foto del avatar: una imagen JPEG pequeña (el navegador la recorta y la reduce antes de mandarla)
+const FOTO_VALIDA = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
+function limpiarFoto(f: unknown): string | null {
+    return typeof f === 'string' && f.length <= 20_000 && FOTO_VALIDA.test(f) ? f : null;
+}
+
 export interface Jugador {
   nombre: string;
   token: string;
-  conectado: boolean;
-  ia: boolean;
+    conectado: boolean;
+    ia: boolean;
+    foto: string | null;
 }
 
 export interface Evento {
@@ -21,15 +27,15 @@ export interface Evento {
   tipo: Accion['tipo'] | 'llevan';
   lance: Lance | null;
   cantidad?: number;
-  subida?: boolean; // un envite que sube sobre otro ("2 más")
+    subida?: boolean; // un envite que sube sobre otro ("2 más")
+    respuesta?: RespuestaMus; // lo que contesta el compañero al consultar el mus
 }
 
 export interface Vista {
   codigo: string;
   asiento: number;
   anfitrion: number | null;
-  jugadores: ({ nombre: string; conectado: boolean; ia: boolean } | null)[];
-  estado: 'esperando' | EstadoPartida;
+    jugadores: ({ nombre: string; conectado: boolean; ia: boolean; foto: string | null } | null)[];  estado: 'esperando' | EstadoPartida;
   // A partir de aquí, solo cuando ha empezado la partida
   ganador?: Equipo | null;
   juegos?: [number, number];
@@ -46,6 +52,8 @@ export interface Vista {
   envite?: { apostador: Equipo; asiento: number; cantidad: number | 'ordago' } | null;
   apuesta?: { total: number | 'ordago'; alRechazar: number } | null;
     aceptados?: Record<Lance, number>;
+    consultaDe?: number | null; // quién está consultando a su compañero si dar mus
+    puedeConsultar?: boolean;
     rechazos?: { lance: Lance; equipo: Equipo; piedras: number }[]; // lances que acabaron con un "no quiero"
   misCartas?: Mano;
   registro?: Evento[];
@@ -65,9 +73,10 @@ function validarAccion(x: unknown): Accion {
   if (typeof x !== 'object' || x === null) throw new Error('Acción no válida');
   const a = x as Record<string, unknown>;
   switch (a.tipo) {
-    case 'mus':
-    case 'corte':
-    case 'tengo':
+      case 'mus':
+      case 'corte':
+      case 'consultar':
+      case 'tengo':
     case 'notengo':
     case 'paso':
     case 'ordago':
@@ -76,7 +85,10 @@ function validarAccion(x: unknown): Accion {
       return { tipo: a.tipo };
     case 'envido':
       if (typeof a.cantidad !== 'number') throw new Error('Falta la cantidad del envite');
-      return { tipo: 'envido', cantidad: a.cantidad };
+          return { tipo: 'envido', cantidad: a.cantidad };
+      case 'respuesta':
+          if (a.valor !== 'corta' && a.valor !== 'decide' && a.valor !== 'mus') throw new Error('Respuesta no válida');
+          return { tipo: 'respuesta', valor: a.valor };
     case 'descartar':
       if (!Array.isArray(a.indices) || a.indices.length > 4 || !a.indices.every((i) => typeof i === 'number')) {
         throw new Error('Descarte no válido');
@@ -129,7 +141,7 @@ export class Sala {
     if (this.partida) throw new Error('La partida ya ha empezado');
   }
 
-  unirse(nombre: unknown): { asiento: number; token: string } {
+    unirse(nombre: unknown, foto?: unknown): { asiento: number; token: string } {
     this.exigirEspera();
     const asiento = this.jugadores.findIndex((j) => j === null);
     if (asiento === -1) throw new Error('La sala está llena');
@@ -138,7 +150,7 @@ export class Sala {
     if (limpio === '') limpio = `Jugador ${asiento + 1}`;
 
     const token = randomUUID();
-    this.jugadores[asiento] = { nombre: limpio, token, conectado: true, ia: false };
+    this.jugadores[asiento] = { nombre: limpio, token, conectado: true, ia: false, foto: limpiarFoto(foto) };
     if (this.anfitrionToken === null) this.anfitrionToken = token;
     this.ultimaActividad = Date.now();
     return { asiento, token };
@@ -168,8 +180,7 @@ export class Sala {
     if (this.jugadores[asiento]) throw new Error('Ese sitio ya está ocupado');
     const usados = new Set(this.jugadores.filter((j) => j?.ia).map((j) => j!.nombre));
     const nombre = NOMBRES_IA.find((n) => !usados.has(`${n} (IA)`)) ?? 'Bot';
-    this.jugadores[asiento] = { nombre: `${nombre} (IA)`, token: randomUUID(), conectado: true, ia: true };
-    this.ultimaActividad = Date.now();
+      this.jugadores[asiento] = { nombre: `${nombre} (IA)`, token: randomUUID(), conectado: true, ia: true, foto: null };    this.ultimaActividad = Date.now();
   }
 
   quitarIA(quien: number, asiento: unknown): void {
@@ -264,7 +275,8 @@ export class Sala {
       evento.cantidad = accion.cantidad;
       if (habiaEnvite) evento.subida = true;
     }
-    if (accion.tipo === 'descartar') evento.cantidad = new Set(accion.indices).size;
+      if (accion.tipo === 'respuesta') evento.respuesta = accion.valor;
+      if (accion.tipo === 'descartar') evento.cantidad = new Set(accion.indices).size;
     this.registro.push(evento);
     // Si rechazan un envite, quien lo hizo se lleva las piedras al momento
     for (const pago of ronda.pagos.slice(pagosAntes)) {
@@ -308,13 +320,14 @@ export class Sala {
       aceptado: r.aceptadoParcial,
       puntos: [r.puntos[0], r.puntos[1]],
       juegos: [p.juegos[0], p.juegos[1]],
-      vueltasMus: r.descartesHechos,
+        vueltasMus: r.descartesHechos,
+        consulta: r.consultaDe !== null,
     };
   }
 
   private accionSegura(): Accion {
     const r = this.partida!.ronda;
-    if (r.fase === 'mus') return { tipo: 'mus' };
+      if (r.fase === 'mus') return r.consultaDe !== null ? { tipo: 'respuesta', valor: 'decide' } : { tipo: 'mus' };
     if (r.fase === 'descarte') return { tipo: 'descartar', indices: [0] };
     return r.envite ? { tipo: 'noquiero' } : { tipo: 'paso' };
   }
@@ -378,8 +391,7 @@ export class Sala {
       codigo: this.codigo,
       asiento,
       anfitrion: this.asientoAnfitrion(),
-      jugadores: this.jugadores.map((j) => (j ? { nombre: j.nombre, conectado: j.conectado, ia: j.ia } : null)),
-    };
+        jugadores: this.jugadores.map((j) => (j ? { nombre: j.nombre, conectado: j.conectado, ia: j.ia, foto: j.foto } : null)),    };
     const p = this.partida;
     if (!p) return { ...base, estado: 'esperando' };
 
@@ -407,6 +419,8 @@ export class Sala {
           }
         : null,
         aceptados: { ...r.aceptado },
+        consultaDe: r.consultaDe,
+        puedeConsultar: r.fase === 'mus' && r.consultaDe === null && r.yaConsulto !== r.turno,
         rechazos: r.pagos.map((x) => ({ lance: x.lance, equipo: x.equipo, piedras: x.piedras })),
       misCartas: r.manos[asiento].map((c) => ({ ...c })),
       registro: [...this.registro],

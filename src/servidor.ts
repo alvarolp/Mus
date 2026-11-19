@@ -14,7 +14,7 @@ const vivos = new Set<WebSocket>();
 const http = createServer((req, res) => {
   void servirEstaticos(req, res);
 });
-const wss = new WebSocketServer({ server: http, maxPayload: 4096 });
+const wss = new WebSocketServer({ server: http, maxPayload: 32_768 }); // cabe la foto del avatar
 
 function enviar(ws: WebSocket, mensaje: unknown): void {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(mensaje));
@@ -76,7 +76,7 @@ function manejar(ws: WebSocket, msg: unknown): void {
     if (m.t === 'crear') {
       const sala = salas.crear();
       prepararSala(sala);
-      const { asiento, token } = sala.unirse(m.nombre);
+        const { asiento, token } = sala.unirse(m.nombre, m.foto);
       entrar(ws, sala, asiento, token);
       return;
     }

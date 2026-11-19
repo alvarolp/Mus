@@ -11,9 +11,13 @@ export const equipoDe = (asiento: number): Equipo => (asiento % 2) as Equipo;
 export type Lance = 'grande' | 'chica' | 'pares' | 'juego'; // 'juego' incluye el punto
 export type Fase = 'mus' | 'descarte' | 'lance' | 'fin';
 
+export type RespuestaMus = 'corta' | 'decide' | 'mus';
+
 export type Accion =
-  | { tipo: 'mus' }
-  | { tipo: 'corte' }
+    | { tipo: 'mus' }
+    | { tipo: 'corte' }
+    | { tipo: 'consultar' } // preguntar al compañero antes de decidir mus o corte
+    | { tipo: 'respuesta'; valor: RespuestaMus } // lo que contesta el compañero
   | { tipo: 'descartar'; indices: number[] }
   | { tipo: 'tengo' }
   | { tipo: 'notengo' }
@@ -57,7 +61,9 @@ export class Ronda {
   fase: Fase = 'mus';
   turno: number;
   ganadorJuego: Equipo | null = null;
-  descartesHechos = 0; // vueltas de descarte que se han dado en esta ronda
+    descartesHechos = 0; // vueltas de descarte que se han dado en esta ronda
+    consultaDe: number | null = null; // quién está consultando a su compañero (esperando respuesta)
+    yaConsulto: number | null = null; // quién ya ha consultado: ahora tiene que decir mus o corte
 
   // Estado de los lances
   lance: Lance | null = null;
@@ -115,8 +121,23 @@ export class Ronda {
 
   // ---------- Mus y descarte ----------
 
-  private accionMus(asiento: number, a: Accion): void {
-    if (a.tipo === 'corte') {
+    private accionMus(asiento: number, a: Accion): void {
+        // El compañero contesta a la consulta y el turno vuelve al que preguntó
+        if (this.consultaDe !== null) {
+            if (a.tipo !== 'respuesta') throw new Error('Tu compañero te está consultando');
+            this.turno = this.consultaDe;
+            this.yaConsulto = this.consultaDe;
+            this.consultaDe = null;
+            return;
+        }
+        if (a.tipo === 'consultar') {
+            if (this.yaConsulto === asiento) throw new Error('Ya has consultado a tu compañero');
+            this.consultaDe = asiento;
+            this.turno = (asiento + 2) % 4;
+            return;
+        }
+        this.yaConsulto = null;
+        if (a.tipo === 'corte') {
       this.dijeronMus = [];
       this.fase = 'lance';
       this.lance = null;

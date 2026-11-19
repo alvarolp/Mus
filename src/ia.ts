@@ -19,7 +19,8 @@ export interface ContextoIA {
   aceptado: number; // piedras ya aceptadas en el lance (antes del envite pendiente)
   puntos: [number, number];
   juegos: [number, number];
-  vueltasMus: number; // cuántas rondas de descarte se han hecho ya
+    vueltasMus: number; // cuántas rondas de descarte se han hecho ya
+    consulta?: boolean; // su compañero le está consultando si dar mus
 }
 
 // ---------- Valor aproximado de una mano (para cortar y para descartar) ----------
@@ -212,8 +213,16 @@ export function decidirLanceConP(ctx: ContextoIA, p: number, azar: () => number)
 // ---------- Decisión ----------
 
 export function decidirIA(ctx: ContextoIA, azar: () => number = Math.random): Accion {
-  if (ctx.fase === 'mus') {
-    const umbral = UMBRAL_CORTE - 0.7 * ctx.vueltasMus;
+    if (ctx.fase === 'mus' && ctx.consulta) {
+        // Contesta a su compañero según lo buena que sea su mano
+        const umbral = UMBRAL_CORTE - 0.7 * ctx.vueltasMus;
+        const valor = puntuarMano(ctx.cartas);
+        if (valor >= umbral) return { tipo: 'respuesta', valor: 'corta' };
+        if (valor < umbral - 1.5) return { tipo: 'respuesta', valor: 'mus' };
+        return { tipo: 'respuesta', valor: 'decide' };
+    }
+    if (ctx.fase === 'mus') {
+        const umbral = UMBRAL_CORTE - 0.7 * ctx.vueltasMus;
     const valor = puntuarMano(ctx.cartas);
     if (valor >= umbral) return { tipo: 'corte' };
     return azar() < FAROL.corte ? { tipo: 'corte' } : { tipo: 'mus' }; // a veces corta de farol

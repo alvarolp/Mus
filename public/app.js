@@ -14,13 +14,15 @@
   // Para probar con varias pestañas en un mismo navegador: localhost:3000/?j=1, ?j=2...
   const sufijo = new URLSearchParams(location.search).get('j') || '';
   const CLAVE_SESION = 'mus_sesion' + sufijo;
-  const CLAVE_NOMBRE = 'mus_nombre' + sufijo;
+    const CLAVE_NOMBRE = 'mus_nombre' + sufijo;
+    const CLAVE_FOTO = 'mus_foto' + sufijo;
 
   // ---------- Estado de la app ----------
   let ws = null;
   let conectado = false;
   let sesion = leer(CLAVE_SESION);       // { codigo, token } para volver a la sala
-  let nombre = leer(CLAVE_NOMBRE) || '';
+    let nombre = leer(CLAVE_NOMBRE) || '';
+    let foto = leer(CLAVE_FOTO);           // foto del avatar, ya recortada y reducida (o null)
   let codigoEscrito = '';
   let estado = null;                     // lo último que ha enviado el servidor
   let error = '';
@@ -295,17 +297,43 @@
   }
 
   // ---------- Acciones del usuario ----------
-  function crearSala() {
-    guardar(CLAVE_NOMBRE, nombre);
-    error = '';
-    enviar({ t: 'crear', nombre });
-  }
+    function crearSala() {
+        guardar(CLAVE_NOMBRE, nombre);
+        error = '';
+        enviar({ t: 'crear', nombre, foto });
+    }
+
+    // Recorta la foto elegida en un cuadrado del centro y la reduce para que pese poco
+    function prepararFoto(archivo) {
+        if (!archivo || !archivo.type.startsWith('image/')) return mostrarError('Eso no es una imagen');
+        const url = URL.createObjectURL(archivo);
+        const img = new Image();
+        img.onload = () => {
+            const lado = 112;
+            const lienzo = document.createElement('canvas');
+            lienzo.width = lado;
+            lienzo.height = lado;
+            const corte = Math.min(img.naturalWidth, img.naturalHeight);
+            const sx = (img.naturalWidth - corte) / 2;
+            const sy = (img.naturalHeight - corte) / 2;
+            lienzo.getContext('2d').drawImage(img, sx, sy, corte, corte, 0, 0, lado, lado);
+            URL.revokeObjectURL(url);
+            foto = lienzo.toDataURL('image/jpeg', 0.8);
+            guardar(CLAVE_FOTO, foto);
+            render();
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            mostrarError('No se ha podido abrir la imagen');
+        };
+        img.src = url;
+    }
 
   function unirse() {
     guardar(CLAVE_NOMBRE, nombre);
     error = '';
     if (codigoEscrito.trim().length !== 4) return mostrarError('El código tiene 4 letras');
-    enviar({ t: 'unirse', codigo: codigoEscrito, nombre });
+      enviar({ t: 'unirse', codigo: codigoEscrito, nombre, foto });
   }
 
   function salir() {
@@ -345,9 +373,19 @@
       campoCodigo.value = codigoEscrito;
     });
 
-    return el('section', { class: 'inicio' },
-      el('h1', null, 'MUS'),
-      campoNombre,
+      // Foto del avatar: al tocar el cuadrado se abre la galería (o la cámara en el móvil)
+      const campoFoto = el('input', { type: 'file', accept: 'image/*', hidden: true });
+      campoFoto.addEventListener('change', () => prepararFoto(campoFoto.files && campoFoto.files[0]));
+      const elegirFoto = el('label', { class: 'foto-elegir', title: 'Elige tu foto' },
+          foto ? el('img', { src: foto, alt: 'Tu foto' }) : el('span', null, '+ Foto'),
+          campoFoto);
+      const quitarFoto = foto
+          ? el('button', { type: 'button', class: 'foto-quitar', 'aria-label': 'Quitar foto', onclick: () => { foto = null; guardar(CLAVE_FOTO, null); render(); } }, '×')
+          : null;
+
+      return el('section', { class: 'inicio' },
+          el('h1', null, 'MUS'),
+          el('div', { class: 'fila-nombre' }, el('div', { class: 'foto-caja' }, elegirFoto, quitarFoto), campoNombre),
       boton('Crear sala', 'principal', crearSala, !conectado),
       el('div', { class: 'o' }, 'o entra en la sala de un amigo'),
       campoCodigo,
@@ -427,7 +465,12 @@
   function textoEvento(ev) {
     switch (ev.tipo) {
       case 'mus': return 'Mus';
-      case 'corte': return 'No hay mus';
+        case 'corte': return 'No hay mus';
+        case 'consultar': return '¿Qué hacemos?';
+        case 'respuesta':
+            if (ev.respuesta === 'corta') return 'Por mí cortamos';
+            if (ev.respuesta === 'mus') return 'Prefiero un mus';
+            return 'Te acompaño';
       case 'descartar': return `Descarto ${ev.cantidad}`;
         case 'tengo': return ev.lance === 'pares' ? 'Tengo pares' : 'Tengo juego';
         case 'notengo': return ev.lance === 'pares' ? 'No tengo pares' : 'No tengo juego';
@@ -526,12 +569,22 @@
     const e = estado;
     if (e.estado !== 'jugando' || e.turno !== e.asiento) return null;
 
-    if (e.fase === 'mus') {
-      return el('div', { class: 'menu' },
-        el('div', { class: 'fila' },
-          botonMenu('No hay mus', () => accionar({ tipo: 'corte' })),
-          botonMenu('Mus', () => accionar({ tipo: 'mus' }))));
-    }
+      if (e.fase === 'mus') {
+          // Mi compañero me está consultando
+          if (e.consultaDe !== null && e.consultaDe !== undefined) {
+              return el('div', { class: 'menu' },
+                  el('p', { class: 'ayuda' }, `${nombreDe(e.consultaDe)} te consulta: ¿damos mus?`),
+                  el('div', { class: 'fila' },
+                      botonMenu('Corta', () => accionar({ tipo: 'respuesta', valor: 'corta' })),
+                      botonMenu('Decide tú', () => accionar({ tipo: 'respuesta', valor: 'decide' })),
+                      botonMenu('Mus', () => accionar({ tipo: 'respuesta', valor: 'mus' }))));
+          }
+          return el('div', { class: 'menu' },
+              el('div', { class: 'fila' },
+                  botonMenu('No hay mus', () => accionar({ tipo: 'corte' })),
+                  e.puedeConsultar ? botonMenu('Consultar', () => accionar({ tipo: 'consultar' })) : null,
+                  botonMenu('Mus', () => accionar({ tipo: 'mus' }))));
+      }
     if (e.fase === 'descarte') {
       const n = seleccion.size;
       return el('div', { class: 'menu' },
@@ -596,8 +649,10 @@
       if (!recontando && e.turno === s) clases.push('turno');
       if (fuera) clases.push('fuera');
       if (j && !j.conectado) clases.push('off');
-      partes.push(el('div', { class: clases.join(' ') },
-        avatarSvg(COLORES_AVATAR[esMio ? (s === yo ? 0 : 2) : (r === 1 ? 1 : 3)]),
+        partes.push(el('div', { class: clases.join(' ') },
+            j && j.foto
+                ? el('img', { class: 'foto', src: j.foto, alt: '', draggable: 'false' })
+                : avatarSvg(COLORES_AVATAR[esMio ? (s === yo ? 0 : 2) : (r === 1 ? 1 : 3)]),
         e.mano === s ? el('span', { class: 'mano-marca' }, 'MANO') : null,
         j && j.ia ? el('span', { class: 'ia-marca' }, 'IA') : null,
         el('span', { class: 'nombre' }, nombreDe(s).replace(/ \(IA\)$/, ''))));
@@ -666,6 +721,7 @@
     return el('section', null,
       el('div', { class: 'tapete' }), mazo, textoMus,
         marcador, titulo, partes, misCartas,
+        el('div', { class: 'codigo-mesa', title: 'Toca para compartir', onclick: compartir }, 'Sala ', el('b', null, e.codigo)),
         e.fase === 'lance' || e.fase === 'fin' ? cuadroLances(e) : null, // solo después de cortar el mus
         extras);
   }
