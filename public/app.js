@@ -303,30 +303,32 @@
         enviar({ t: 'crear', nombre, foto });
     }
 
-    // Recorta la foto elegida en un cuadrado del centro y la reduce para que pese poco
+    // Recorta la foto elegida en un cuadrado del centro y la reduce para que pese poco.
+    // Se lee como "data:" (no como "blob:") porque la seguridad del servidor solo permite imágenes data:
     function prepararFoto(archivo) {
-        if (!archivo || !archivo.type.startsWith('image/')) return mostrarError('Eso no es una imagen');
-        const url = URL.createObjectURL(archivo);
-        const img = new Image();
-        img.onload = () => {
-            const lado = 112;
-            const lienzo = document.createElement('canvas');
-            lienzo.width = lado;
-            lienzo.height = lado;
-            const corte = Math.min(img.naturalWidth, img.naturalHeight);
-            const sx = (img.naturalWidth - corte) / 2;
-            const sy = (img.naturalHeight - corte) / 2;
-            lienzo.getContext('2d').drawImage(img, sx, sy, corte, corte, 0, 0, lado, lado);
-            URL.revokeObjectURL(url);
-            foto = lienzo.toDataURL('image/jpeg', 0.8);
-            guardar(CLAVE_FOTO, foto);
-            render();
+        if (!archivo) return;
+        if (archivo.type && !archivo.type.startsWith('image/')) return mostrarError('Eso no es una imagen');
+        const lector = new FileReader();
+        lector.onerror = () => mostrarError('No se ha podido leer la imagen');
+        lector.onload = () => {
+            const img = new Image();
+            img.onload = () => {
+                const lado = 112;
+                const lienzo = document.createElement('canvas');
+                lienzo.width = lado;
+                lienzo.height = lado;
+                const corte = Math.min(img.naturalWidth, img.naturalHeight);
+                const sx = (img.naturalWidth - corte) / 2;
+                const sy = (img.naturalHeight - corte) / 2;
+                lienzo.getContext('2d').drawImage(img, sx, sy, corte, corte, 0, 0, lado, lado);
+                foto = lienzo.toDataURL('image/jpeg', 0.8);
+                guardar(CLAVE_FOTO, foto);
+                render();
+            };
+            img.onerror = () => mostrarError('Ese formato de imagen no se puede abrir');
+            img.src = lector.result;
         };
-        img.onerror = () => {
-            URL.revokeObjectURL(url);
-            mostrarError('No se ha podido abrir la imagen');
-        };
-        img.src = url;
+        lector.readAsDataURL(archivo);
     }
 
   function unirse() {
